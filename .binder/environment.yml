@@ -1,0 +1,17 @@
+name: virtualship-postprocessing
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy
+  - pyyaml
+  - openpyxl
+  - xarray
+  - scipy
+  - pandas
+  - matplotlib
+  - ipympl
+  - cartopy
+  - cmocean
+  - geopy
+  - gsw
