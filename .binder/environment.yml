@@ -13,3 +13,5 @@ dependencies:
   - cmocean
   - geopy
   - gsw
+  - netcdf4
+  - h5netcdf
