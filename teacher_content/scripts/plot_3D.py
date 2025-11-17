@@ -4,12 +4,10 @@ import numpy as np
 import xarray as xr
 import os
 import glob
+import plotly.graph_objects as go
 import matplotlib as mpl
-import plotly.graph_objs as go
 
-var = "primary_production"  # change this to your chosen variable
-
-# TODO: need to be sorted by time!!
+var = "temperature"  # change this to your chosen variable
 
 
 base_dir = os.getcwd()
@@ -25,22 +23,22 @@ VARIABLES = {
     },
     "salinity": {
         "cmap": cmo.haline,
-        "label": "Salinity (PSU)",
+        "label": "Salinity (psu)",
         "ds_name": "salinity",
     },
     "oxygen": {
         "cmap": cmo.oxy,
-        "label": r"Dissolved oxygen (mmol m<sup>-3</sup>)",
+        "label": r"Dissolved oxygen (mmol m$^{-3}$)",
         "ds_name": "o2",
     },
     "nitrate": {
         "cmap": cmo.matter,
-        "label": r"Nitrate (mmol m<sup>-3</sup>)",
+        "label": r"Nitrate (mmol m$^{-3}$)",
         "ds_name": "no3",
     },
     "phosphate": {
         "cmap": cmo.matter,
-        "label": r"Phosphate (mmol m<sup>-3</sup>)",
+        "label": r"Phosphate (mmol m$^{-3}$)",
         "ds_name": "po4",
     },
     "ph": {
@@ -50,17 +48,17 @@ VARIABLES = {
     },
     "phytoplankton": {
         "cmap": cmo.algae,
-        "label": r"Total phytoplankton (mmol m<sup>-3</sup>)",
+        "label": r"Total phytoplankton (mmol m$^{-3}$)",
         "ds_name": "phyc",
     },
     "primary_production": {
         "cmap": cmo.matter,
-        "label": "Total primary production of phytoplankton (mg m<sup>-3</sup> day<sup>-1</sup>)",
+        "label": r"Total primary production of phytoplankton (mg m$^{-3}$ day$^{-1}$)",
         "ds_name": "nppv",
     },
     "chlorophyll": {
         "cmap": cmo.algae,
-        "label": "Chlorophyll (mg m<sup>-3</sup>)",
+        "label": r"Chlorophyll (mg m$^{-3}$)",
         "ds_name": "chl",
     },
 }
@@ -172,7 +170,10 @@ for i, path in enumerate(grp_dirs):
 
 # concat
 var_concat = xr.concat(expeditions, dim="expedition")
-var_concat["expedition"] = times
+
+sorted_indices = np.argsort(times)
+var_concat = var_concat.isel(expedition=sorted_indices)
+times = [times[i] for i in sorted_indices]
 
 # 1d array of depth dimension (from deepest trajectory)
 traj_idx, obs_idx = np.where(z_up == np.nanmin(z_up))
@@ -183,96 +184,65 @@ distance_1d = d_up.isel(obs=0)
 
 # %%
 
-## plotting (interactive with Plotly)
-
-depth_lim = -200  # [m]
+## plotting
 
 # trim to upper 600m
-var_trim = var_concat.where(z_up >= depth_lim)
-
-# sort by time/expedition
-var_trim = var_trim.sortby("expedition")
+var_trim = var_concat.where(z_up >= -600)
 
 
-# Prepare colorscale for Plotly from matplotlib colormap
-def mpl_to_plotly(cmap, n=256):
-    return [[i / (n - 1), mpl.colors.rgb2hex(cmap(i / (n - 1)))] for i in range(n)]
-
-
-plotly_cmap = mpl_to_plotly(VARIABLES[var]["cmap"])
-
-# Prepare slider steps
-steps = []
-data = []
-for t in range(var_trim.shape[0]):
-    seabed = xr.where(np.isnan(var_trim[t]), 1, None).T
-
-    # main cross-section
-    trace = go.Heatmap(
-        z=var_trim[t].T,
-        x=distance_1d / 1000.0,  # distance in km
-        y=z1d,
-        zmin=np.nanmin(var_trim.values),
-        zmax=np.nanmax(var_trim.values),
-        colorscale=plotly_cmap,
-        colorbar=dict(title=VARIABLES[var]["label"]),
-        showscale=True,
-        visible=(t == 0),
-        customdata=None,
-        hovertemplate="Distance: %{x:.2f} km<br>Depth: %{z:.1f} m<br>Value: %{value:.2f}<extra></extra>",
-    )
-    # Seabed overlay (tan color)
-    seabed_trace = go.Heatmap(
-        z=seabed,
-        x=distance_1d / 1000.0,  # distance in km
-        y=z1d,
-        colorscale=[[0, "tan"], [1, "tan"]],
-        showscale=False,
-        opacity=1.0,
-        visible=(t == 0),
-        name="Land / sea bed",
-        hoverinfo="skip",
-    )
-    data.append(trace)
-    data.append(seabed_trace)
-    steps.append(
-        {
-            "method": "update",
-            "args": [
-                {"visible": [i // 2 == t for i in range(2 * var_trim.shape[0])]},
-                {
-                    "title": f"{VARIABLES[var]['label']} (Date {np.datetime_as_string(var_trim['expedition'][t].values, unit='D')})"
-                },
-            ],
-            "label": str(
-                np.datetime_as_string(var_trim["expedition"][t].values, unit="D")
-            ),
-        }
-    )
-
-sliders = [
-    dict(active=0, currentvalue={"prefix": "Date: "}, pad={"t": 50}, steps=steps)
+# Convert cmo.thermal to Plotly colorscale
+thermal_cmap = cmo.thermal
+thermal_colorscale = [
+    [i / 255, mpl.colors.rgb2hex(thermal_cmap(i / 255))] for i in range(256)
 ]
 
-layout = go.Layout(
-    title=f"{VARIABLES[var]['label']} (Date {np.datetime_as_string(var_trim['expedition'][0].values, unit='D')})",
-    xaxis=dict(
-        title="Distance from start (km)",
-        tickvals=(distance_1d / 1000.0),
-        tickformat=".0f",
-    ),
-    yaxis=dict(
-        title="Depth (m)",
-        range=[depth_lim, np.nanmax(z1d)],
-    ),
-    sliders=sliders,
-    legend=dict(itemsizing="constant"),
-    # width=1200,
-    # height=600,
+# meshgrid for 3D plotting
+expeditions = var_trim["expedition"].values
+trajectories = distance_1d.values
+depths = z1d
+
+xx, yy, zz = np.meshgrid(expeditions, trajectories, depths, indexing="ij")
+
+# values
+values = var_trim.values  # shape: (expedition, trajectory, obs)
+valid_values = values[~np.isnan(values)]
+isomin = np.nanpercentile(valid_values, 2.5)
+isomax = np.nanpercentile(valid_values, 97.5)
+
+fig = go.Figure(
+    data=go.Volume(
+        x=xx.flatten(),
+        y=yy.flatten() / 1000.0,  # convert to km
+        z=zz.flatten(),
+        value=np.nan_to_num(values, nan=-9999).flatten(),
+        isomin=isomin,
+        isomax=isomax,
+        opacity=0.3,
+        surface_count=21,
+        # opacityscale=[[2, 0.2], [5, 0.5], [5, 0.5], [8, 1]],
+        # opacityscale="extremes",
+        # colorscale=thermal_colorscale,
+        caps=dict(x_show=False, y_show=False, z_show=False),  # Hide caps for clarity
+    )
 )
 
-fig = go.Figure(data=data, layout=layout)
+fig.update_layout(
+    scene=dict(
+        zaxis=dict(title="Depth (m)", range=[-600, 0]),
+        yaxis=dict(
+            title="Distance from start (km)",
+            range=[0, np.nanmax(trajectories) / 1000.0],
+        ),
+        xaxis=dict(
+            title="Year",
+            tickvals=np.array([i for i in range(len(expeditions))])[::-1],
+            ticktext=[
+                str(np.datetime64(times[i], "Y")) for i in range(len(expeditions))
+            ][::-1],
+        ),
+    ),
+    margin=dict(l=0, r=0, b=0, t=40),
+    title="3D Volume Plot of " + VARIABLES[var]["label"],
+)
+
 fig.show()
-
-
-# %%
