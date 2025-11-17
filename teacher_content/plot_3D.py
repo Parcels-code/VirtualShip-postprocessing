@@ -3,16 +3,16 @@ import cmocean.cm as cmo
 import numpy as np
 import xarray as xr
 import os
-from glob import glob
+import glob
 import plotly.graph_objects as go
 import matplotlib as mpl
 
-var = "temperature"  # change this to your chosen variable
+var = "phytoplankton"  # change this to your chosen variable
 
 
 base_dir = os.getcwd()
-filename = "ctd.zarr" if var in ["temperature", "salinity"] else "ctd_bgc.zarr"
-grp_dirs = sorted(glob(os.path.join(base_dir, "GRP????/results/", filename)))
+filename = "ctd.nc" if var in ["temperature", "salinity"] else "ctd_bgc.nc"
+grp_dirs = sorted(glob.glob(os.path.expanduser(f"../data/GROUP*/results/{filename}")))
 
 
 VARIABLES = {
@@ -171,6 +171,9 @@ for i, path in enumerate(grp_dirs):
 # concat
 var_concat = xr.concat(expeditions, dim="expedition")
 
+sorted_indices = np.argsort(times)
+var_concat = var_concat.isel(expedition=sorted_indices)
+times = [times[i] for i in sorted_indices]
 
 # 1d array of depth dimension (from deepest trajectory)
 traj_idx, obs_idx = np.where(z_up == np.nanmin(z_up))
@@ -185,6 +188,7 @@ distance_1d = d_up.isel(obs=0)
 
 # trim to upper 600m
 var_trim = var_concat.where(z_up >= -600)
+
 
 # Convert cmo.thermal to Plotly colorscale
 thermal_cmap = cmo.thermal
@@ -242,5 +246,3 @@ fig.update_layout(
 )
 
 fig.show()
-
-fig.write_html(f"./sample_3D_{var}.html")

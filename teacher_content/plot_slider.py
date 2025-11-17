@@ -3,16 +3,18 @@ import cmocean.cm as cmo
 import numpy as np
 import xarray as xr
 import os
-from glob import glob
+import glob
 import matplotlib as mpl
 import plotly.graph_objs as go
 
 var = "primary_production"  # change this to your chosen variable
 
+# TODO: need to be sorted by time!!
+
 
 base_dir = os.getcwd()
-filename = "ctd.zarr" if var in ["temperature", "salinity"] else "ctd_bgc.zarr"
-grp_dirs = sorted(glob(os.path.join(base_dir, "GRP????/results/", filename)))
+filename = "ctd.nc" if var in ["temperature", "salinity"] else "ctd_bgc.nc"
+grp_dirs = sorted(glob.glob(os.path.expanduser(f"../data/GROUP*/results/{filename}")))
 
 
 VARIABLES = {
@@ -188,6 +190,9 @@ depth_lim = -200  # [m]
 # trim to upper 600m
 var_trim = var_concat.where(z_up >= depth_lim)
 
+# sort by time/expedition
+var_trim = var_trim.sortby("expedition")
+
 
 # Prepare colorscale for Plotly from matplotlib colormap
 def mpl_to_plotly(cmap, n=256):
@@ -262,14 +267,12 @@ layout = go.Layout(
     ),
     sliders=sliders,
     legend=dict(itemsizing="constant"),
-    width=900,
-    height=600,
+    # width=1200,
+    # height=600,
 )
 
 fig = go.Figure(data=data, layout=layout)
 fig.show()
-
-fig.write_html(f"./sample_slider_{var}.html")
 
 
 # %%
